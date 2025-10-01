@@ -58,6 +58,31 @@ func NewConfig() BuildConfig {
 	}
 }
 
+func getTargetBuilds(targets []OSARCH, allDists []GoDist) []GoDist {
+
+	if len(targets) == 0 {
+		return allDists
+	}
+	targetDists := []GoDist{}
+
+	for _, target := range targets {
+		for _, dist := range allDists {
+			if target.ARCH == "" {
+				if target.OS == dist.GOOS {
+					targetDists = append(targetDists, dist)
+				}
+			} else {
+				if target.OS == dist.GOOS && target.ARCH == dist.GOARCH {
+					targetDists = append(targetDists, dist)
+				}
+
+			}
+		}
+	}
+
+	return targetDists
+}
+
 func getBuildOptions(ctx context.Context, targets []OSARCH) ([]GoDist, error) {
 	cmd := exec.CommandContext(ctx, "go", "tool", "dist", "list", "-json")
 	cmd.Stdout = os.Stdout
@@ -79,22 +104,7 @@ func getBuildOptions(ctx context.Context, targets []OSARCH) ([]GoDist, error) {
 		return supportedDists, nil
 	}
 
-	targetDists := []GoDist{}
-
-	for _, target := range targets {
-		for _, dist := range supportedDists {
-			if target.ARCH == "" {
-				if target.OS == dist.GOOS {
-					targetDists = append(targetDists, dist)
-				}
-			} else {
-				if target.OS == dist.GOOS && target.ARCH == dist.GOARCH {
-					targetDists = append(targetDists, dist)
-				}
-
-			}
-		}
-	}
+	targetDists := getTargetBuilds(targets, supportedDists)
 
 	if len(targetDists) > 0 {
 		return targetDists, nil
@@ -128,7 +138,12 @@ func Build(config BuildConfig, dist GoDist) error {
 
 func parseStringToOSARCH(rawStr string) (OSARCH, error) {
 
-	splitStr := strings.Split(rawStr, "/")
+	if rawStr == "" {
+		return OSARCH{}, ErrInvalidOSARCH
+	}
+
+	strLower := strings.ToLower(rawStr)
+	splitStr := strings.Split(strLower, "/")
 
 	if len(splitStr) == 1 {
 		return OSARCH{
