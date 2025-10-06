@@ -223,9 +223,10 @@ func main() {
 
 	flag.BoolVar(&VERBOSE, "v", false, "Specify whether or not to print additional information during run")
 
-	flag.Parse()
+	var numProcesses int
+	flag.IntVar(&numProcesses, "nproc", 5, "Specify the maximum number of co-routines to run during build process. Used to set GOMAXPROCS env variable.")
 
-	runtime.GOMAXPROCS(5)
+	flag.Parse()
 
 	logWriter := io.Discard
 	if VERBOSE {
@@ -233,6 +234,16 @@ func main() {
 	}
 
 	verboseLogger := log.New(logWriter, "verbose:", log.LstdFlags)
+
+	numCores := runtime.NumCPU()
+
+	if numProcesses < numCores {
+		numProcesses = numCores
+	}
+
+	runtime.GOMAXPROCS(numProcesses)
+
+	verboseLogger.Println("max procs:", numProcesses)
 
 	projectDir := ""
 	if len(flag.Args()) > 0 {
