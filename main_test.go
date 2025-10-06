@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -230,7 +231,7 @@ func TestGetProjectName(t *testing.T) {
 		{
 			name:  "current dir (.)",
 			input: ".",
-			wants: currentWD,
+			wants: filepath.Base(currentWD),
 			err:   nil,
 		},
 	}

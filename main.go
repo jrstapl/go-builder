@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -16,7 +17,10 @@ import (
 var (
 	ErrInvalidOSARCH           = errors.New("invalid os/arch configuration")
 	ErrUnsupportedTargetOSARCH = errors.New("unable to find go dist to support target os/arch combination(s)")
+	ErrFailedBuildCommand      = errors.New("unable to build target")
 )
+
+var VERBOSE bool
 
 type OSARCH struct {
 	OS   string
@@ -85,9 +89,6 @@ func getTargetBuilds(targets []OSARCH, allDists []GoDist) []GoDist {
 
 func getBuildOptions(ctx context.Context, targets []OSARCH) ([]GoDist, error) {
 	cmd := exec.CommandContext(ctx, "go", "tool", "dist", "list", "-json")
-	cmd.Stdout = os.Stdout
-	cmd.Stdin = os.Stdin
-	cmd.Stderr = os.Stderr
 
 	rawJson, err := cmd.Output()
 
@@ -113,9 +114,7 @@ func getBuildOptions(ctx context.Context, targets []OSARCH) ([]GoDist, error) {
 	}
 }
 
-func Build(config BuildConfig, dist GoDist) error {
-
-	outputDir := "./build"
+func Build(config BuildConfig, dist GoDist) (string, error) {
 
 	filename := fmt.Sprintf("%s-%s_%s", config.BinaryName, dist.GOOS, dist.GOARCH)
 
@@ -123,16 +122,24 @@ func Build(config BuildConfig, dist GoDist) error {
 		filename += ".exe"
 	}
 
-	fp := filepath.Join(outputDir, filename)
+	fp := filepath.Join(config.OutputDir, filename)
 
-	cmd := exec.Command("go", "build", "-o", fp)
+	cmd := exec.Command("go", "build", "-o", fp, config.ProjectDir)
 	cmd.Dir = config.ProjectDir
 	cmd.Env = append(os.Environ(),
 		dist.GOOSEnv(),
 		dist.GOARCHEnv(),
 	)
 
-	return nil
+	res, err := cmd.Output()
+
+	if err != nil {
+
+		return string(res), err
+
+	}
+
+	return string(res), nil
 
 }
 
@@ -162,13 +169,18 @@ func parseStringToOSARCH(rawStr string) (OSARCH, error) {
 }
 
 func getProjectName(projFp string) (string, error) {
+	var err error = nil
 	if projFp == "." {
 
-		return os.Getwd()
+		projFp, err = os.Getwd()
+
+		if err != nil {
+			return "", err
+		}
 
 	}
 
-	return filepath.Base(projFp), nil
+	return filepath.Base(projFp), err
 }
 
 func main() {
@@ -207,10 +219,30 @@ func main() {
 	var binaryName string
 	flag.StringVar(&binaryName, "n", "", "Specify the name of the binary build file(s)")
 
-	projectDir := "."
-	if len(flag.Args()) > 1 {
-		projectDir = flag.Args()[1]
+	flag.BoolVar(&VERBOSE, "v", false, "Specify whether or not to print additional information during run")
+
+	flag.Parse()
+
+	logWriter := io.Discard
+	if VERBOSE {
+		logWriter = os.Stdout
 	}
+
+	verboseLogger := log.New(logWriter, "verbose:", log.LstdFlags)
+
+	projectDir := ""
+	if len(flag.Args()) > 0 {
+		projectDir = flag.Args()[0]
+	}
+	var err error = nil
+	if projectDir == "" || projectDir == "." {
+		projectDir, err = os.Getwd()
+		if err != nil {
+			log.Fatalln("get wd:", err)
+		}
+	}
+
+	verboseLogger.Println(logWriter, "project dir:", projectDir)
 
 	projectName, err := getProjectName(projectDir)
 
@@ -218,9 +250,13 @@ func main() {
 		log.Fatalln("project name:", err)
 	}
 
+	verboseLogger.Println(logWriter, "project name:", projectName)
+
 	if outputDir == "" {
 		outputDir = filepath.Join(projectDir, "build")
 	}
+
+	verboseLogger.Println(logWriter, "output directory:", outputDir)
 
 	buildDists, err := getBuildOptions(ctx, targetOS)
 
@@ -237,7 +273,11 @@ func main() {
 	config.ProjectDir = projectDir
 
 	for _, dist := range buildDists {
-		Build(config, dist)
+		res, err := Build(config, dist)
+
+		verboseLogger.Println(logWriter, "build:", dist)
+		verboseLogger.Println(res)
+		verboseLogger.Println("error:", err)
 
 	}
 
