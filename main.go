@@ -11,7 +11,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 )
 
 var (
@@ -223,6 +225,8 @@ func main() {
 
 	flag.Parse()
 
+	runtime.GOMAXPROCS(5)
+
 	logWriter := io.Discard
 	if VERBOSE {
 		logWriter = os.Stdout
@@ -272,13 +276,23 @@ func main() {
 	config.OutputDir = outputDir
 	config.ProjectDir = projectDir
 
-	for _, dist := range buildDists {
-		res, err := Build(config, dist)
+	wg := sync.WaitGroup{}
 
-		verboseLogger.Println(logWriter, "build:", dist)
-		verboseLogger.Println(res)
-		verboseLogger.Println("error:", err)
+	wg.Add(len(buildDists))
+
+	for _, dist := range buildDists {
+
+		go func() {
+			defer wg.Done()
+			res, err := Build(config, dist)
+
+			verboseLogger.Println(logWriter, "build:", dist)
+			verboseLogger.Println(res)
+			verboseLogger.Println("error:", err)
+		}()
 
 	}
+
+	wg.Wait()
 
 }
