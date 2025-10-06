@@ -28,8 +28,12 @@ go.work.sum
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
 
 # binary 
 *go-builder
+
+# build files 
+build/
+
